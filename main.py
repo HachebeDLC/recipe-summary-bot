@@ -3,6 +3,8 @@ import yt_dlp
 import time
 import json
 import re
+from datetime import datetime
+import pymongo
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, PicklePersistence
@@ -16,6 +18,28 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
 # Configure the Gemini client
 genai.configure(api_key=GEMINI_API_KEY)
+
+# Configure MongoDB connection
+MONGO_URI = os.getenv("MONGO_URI")
+mongo_client = pymongo.MongoClient(MONGO_URI)
+db = mongo_client.recipe_bot
+recipes_collection = db.recipes
+
+def get_cached_recipe(url, language):
+    """Checks the MongoDB cache for a recipe."""
+    print(f"Checking cache for URL: {url} and language: {language}")
+    return recipes_collection.find_one({"url": url, "language": language})
+
+def cache_recipe(url, language, recipe_data):
+    """Caches a new recipe in MongoDB."""
+    print(f"Caching recipe for URL: {url} and language: {language}")
+    document = {
+        "url": url,
+        "language": language,
+        "recipe_data": recipe_data,
+        "timestamp": datetime.utcnow()
+    }
+    recipes_collection.insert_one(document)
 
 def download_video(url):
     """
@@ -125,19 +149,30 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles messages that are not commands."""
     url = update.message.text
+
+    # Get user's preferred language, default to 'en'
+    language = context.user_data.get('language', 'en')
+
+    # Check cache first
+    cached_recipe = get_cached_recipe(url, language)
+    if cached_recipe:
+        await context.bot.send_message(chat_id=update.effective_chat.id, text="Found this recipe in the cache! Here you go:")
+        summary = format_recipe_markdown(cached_recipe['recipe_data'])
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=summary, parse_mode=ParseMode.MARKDOWN_V2)
+        return
+
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Processing your video... This may take a moment.")
 
     video_path = None
     try:
-        # Get user's preferred language, default to 'en'
-        language = context.user_data.get('language', 'en')
-
         video_path = download_video(url)
         recipe_data = summarize_video(video_path, language=language)
 
         if "error" in recipe_data:
             await context.bot.send_message(chat_id=update.effective_chat.id, text=recipe_data["error"])
         else:
+            # Cache the new recipe
+            cache_recipe(url, language, recipe_data)
             summary = format_recipe_markdown(recipe_data)
             await context.bot.send_message(chat_id=update.effective_chat.id, text=summary, parse_mode=ParseMode.MARKDOWN_V2)
 

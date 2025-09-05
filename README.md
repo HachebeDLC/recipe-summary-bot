@@ -17,6 +17,7 @@ Before you can run this bot, you will need the following:
 
 *   A Telegram account.
 *   A Google AI Studio account.
+*   Docker and Docker Compose installed on your machine.
 
 ## Setup
 
@@ -27,47 +28,43 @@ Before you can run this bot, you will need the following:
     cd recipe-bot
     ```
 
-2.  **Create a virtual environment and install the dependencies:**
+2.  **Create a `.env` file:**
+
+    Create a file named `.env` in the root of the project by copying the example:
 
     ```bash
-    python -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
+    cp .env.example .env
     ```
 
-3.  **Create a `.env` file:**
-
-    Create a file named `.env` in the root of the project and add the following content:
+    Then, edit the `.env` file and add your API keys. It should look like this:
 
     ```
     TELEGRAM_BOT_TOKEN="YOUR_TELEGRAM_BOT_TOKEN"
     GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+    MONGO_URI="mongodb://mongo:27017/"
     ```
-
-4.  **Get the API Keys:**
 
     *   **Telegram Bot Token:** Talk to the [BotFather](https://t.me/botfather) on Telegram to create a new bot and get the token.
     *   **Gemini API Key:** Go to [Google AI Studio](https://aistudio.google.com/) and create a new API key.
-
-    Replace the placeholder values in the `.env` file with your actual API keys.
+    *   The `MONGO_URI` is already set up for the local Docker environment and does not need to be changed.
 
 ## Deployment
 
-You can deploy this bot using Docker.
+The easiest way to run the bot is with Docker Compose. This will start the bot and a local MongoDB database for caching.
 
-1.  **Build the Docker image:**
-
-    ```bash
-    docker build -t recipe-bot .
-    ```
-
-2.  **Run the Docker container:**
+1.  **Start the application:**
 
     ```bash
-    docker run -d --env-file .env recipe-bot
+    docker-compose up --build -d
     ```
 
-    The bot will now be running in the background.
+    The `-d` flag runs the containers in the background.
+
+2.  **To stop the application:**
+
+    ```bash
+    docker-compose down
+    ```
 
 ## Usage
 

@@ -147,3 +147,6 @@ vite.config.ts.timestamp-*
 
 # Bot persistence file
 bot_data
+
+# Local MongoDB data
+mongo-data/
