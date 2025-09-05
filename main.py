@@ -1,6 +1,7 @@
 import os
 import yt_dlp
 import time
+import re
 from telegram import Update
 from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
@@ -29,6 +30,26 @@ def download_video(url):
         video_path = ydl.prepare_filename(info_dict)
 
     return video_path
+
+def sanitize_markdown(text):
+    """
+    Sanitizes the text from Gemini to be compliant with Telegram's MarkdownV2.
+    This version is more selective to avoid breaking intentional formatting.
+    """
+    # Replace common bullet points with dashes
+    text = text.replace('•', '-')
+
+    # Escape specific characters that are often unescaped by the LLM
+    # Note: This is not exhaustive and may need refinement.
+    # We are avoiding a blanket escape to preserve formatting like *bold* and _italic_.
+    escape_chars = r'.!'
+    text = re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
+
+    # Remove trailing backslash if it exists, as it can cause errors
+    if text.endswith('\\'):
+        text = text[:-1]
+
+    return text
 
 def summarize_video(video_path, language='en'):
     """
@@ -65,7 +86,7 @@ def summarize_video(video_path, language='en'):
     *Servings:* How many people the recipe serves.
 
     *Ingredients:*
-    - A bulleted list of ingredients.
+    - A bulleted list of ingredients. Use the `-` character for bullet points.
 
     *Instructions:*
     1. A numbered list of clear, step-by-step instructions.
@@ -105,12 +126,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         language = context.user_data.get('language', 'en')
 
         video_path = download_video(url)
-        summary = summarize_video(video_path, language=language)
+        raw_summary = summarize_video(video_path, language=language)
+        summary = sanitize_markdown(raw_summary)
+
         try:
             await context.bot.send_message(chat_id=update.effective_chat.id, text=summary, parse_mode=ParseMode.MARKDOWN_V2)
         except Exception as e:
             # If Markdown parsing fails, send as plain text
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=summary)
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=raw_summary)
 
     except Exception as e:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=f"An error occurred: {e}")
