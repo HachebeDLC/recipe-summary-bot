@@ -6,7 +6,7 @@ A Telegram bot that downloads videos from social media, transcribes the audio, a
 
 *   Downloads videos from YouTube, TikTok, and other social media sites.
 *   Extracts the audio from the video.
-*   Transcribes the audio using AssemblyAI.
+*   Transcribes the audio using Google's Gemini Pro model.
 *   Summarizes the recipe using Google's Gemini Pro model.
 
 ## Prerequisites
@@ -15,7 +15,6 @@ Before you can run this bot, you will need the following:
 
 *   A Telegram account.
 *   A Google AI Studio account.
-*   An AssemblyAI account.
 
 ## Setup
 
@@ -41,14 +40,12 @@ Before you can run this bot, you will need the following:
     ```
     TELEGRAM_BOT_TOKEN="YOUR_TELEGRAM_BOT_TOKEN"
     GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
-    ASSEMBLYAI_API_KEY="YOUR_ASSEMBLYAI_API_KEY"
     ```
 
 4.  **Get the API Keys:**
 
     *   **Telegram Bot Token:** Talk to the [BotFather](https://t.me/botfather) on Telegram to create a new bot and get the token.
     *   **Gemini API Key:** Go to [Google AI Studio](https://aistudio.google.com/) and create a new API key.
-    *   **AssemblyAI API Key:** Sign up for a free account at [AssemblyAI](https://www.assemblyai.com/) and get your API key from the dashboard.
 
     Replace the placeholder values in the `.env` file with your actual API keys.
 

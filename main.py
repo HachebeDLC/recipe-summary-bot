@@ -5,17 +5,14 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
 import google.generativeai as genai
-import assemblyai as aai
 
 # Load environment variables from .env file
 load_dotenv()
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-ASSEMBLYAI_API_KEY = os.getenv("ASSEMBLYAI_API_KEY")
 
-# Configure the Gemini and AssemblyAI clients
+# Configure the Gemini client
 genai.configure(api_key=GEMINI_API_KEY)
-aai.settings.api_key = ASSEMBLYAI_API_KEY
 
 def download_and_extract_audio(url):
     """
@@ -41,15 +38,19 @@ def download_and_extract_audio(url):
 
 def transcribe_audio(audio_file_path):
     """
-    Transcribes the given audio file using AssemblyAI.
+    Transcribes the given audio file using the Gemini API.
     """
-    transcriber = aai.Transcriber()
-    transcript = transcriber.transcribe(audio_file_path)
+    # Upload the audio file to the Files API
+    audio_file = genai.upload_file(path=audio_file_path)
 
-    if transcript.status == aai.TranscriptStatus.error:
-        raise Exception(f"AssemblyAI transcription failed: {transcript.error}")
-    else:
-        return transcript.text
+    # Call the Gemini API to transcribe the audio
+    model = genai.GenerativeModel("gemini-1.5-pro-preview-0409")
+    response = model.generate_content(["Transcribe this audio clip", audio_file])
+
+    # Clean up the uploaded file
+    genai.delete_file(audio_file.name)
+
+    return response.text
 
 def summarize_text(text):
     """
@@ -77,16 +78,16 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Processing your video...")
 
     try:
-        audio_file = download_and_extract_audio(url)
-        transcript = transcribe_audio(audio_file)
+        audio_file_path = download_and_extract_audio(url)
+        transcript = transcribe_audio(audio_file_path)
         summary = summarize_text(transcript)
         await context.bot.send_message(chat_id=update.effective_chat.id, text=summary)
     except Exception as e:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=f"An error occurred: {e}")
     finally:
         # Clean up the audio file
-        if 'audio_file' in locals() and os.path.exists(audio_file):
-            os.remove(audio_file)
+        if 'audio_file_path' in locals() and os.path.exists(audio_file_path):
+            os.remove(audio_file_path)
 
 
 def main():
@@ -98,10 +99,6 @@ def main():
 
     if not GEMINI_API_KEY or GEMINI_API_KEY == "YOUR_GEMINI_API_KEY":
         print("Please set your Gemini API key in the .env file.")
-        return
-
-    if not ASSEMBLYAI_API_KEY or ASSEMBLYAI_API_KEY == "YOUR_ASSEMBLYAI_API_KEY":
-        print("Please set your AssemblyAI API key in the .env file.")
         return
 
     application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
