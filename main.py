@@ -2,6 +2,7 @@ import os
 import yt_dlp
 import time
 from telegram import Update
+from telegram.constants import ParseMode
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
 import google.generativeai as genai
@@ -29,7 +30,7 @@ def download_video(url):
 
     return video_path
 
-def summarize_video(video_path):
+def summarize_video(video_path, language='en'):
     """
     Summarizes the given video into a recipe using the Gemini API.
     """
@@ -50,11 +51,27 @@ def summarize_video(video_path):
 
     # Call the Gemini API to summarize the video
     model = genai.GenerativeModel("gemini-2.5-pro")
-    prompt = """
-    Analyze the video and generate a recipe.
-    The output should be a well-formatted recipe with a title, a list of ingredients, and step-by-step instructions.
-    Take into account both the audio and visual information in the video.
-    If the video does not contain a recipe, please indicate that.
+    prompt = f"""
+    Analyze the video provided and generate a detailed recipe.
+    The user's preferred language is {language}. All output must be in this language.
+
+    The output should be a well-formatted recipe using Telegram's MarkdownV2 formatting.
+    It must include the following sections:
+
+    *A short, engaging description of the dish.*
+
+    *Prep Time:* Estimated preparation time.
+    *Cook Time:* Estimated cooking time.
+    *Servings:* How many people the recipe serves.
+
+    *Ingredients:*
+    - A bulleted list of ingredients.
+
+    *Instructions:*
+    1. A numbered list of clear, step-by-step instructions.
+
+    Take into account all audio and visual information in the video to make the recipe as accurate as possible.
+    If the video does not contain a recipe, please respond with only the message "I'm sorry, I couldn't find a recipe in this video." in the requested language.
     """
     response = model.generate_content([prompt, video_file])
 
@@ -64,8 +81,18 @@ def summarize_video(video_path):
     return response.text
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Sends a welcome message when the /start command is issued."""
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="Hi! Send me a video link and I'll generate a recipe for you.")
+    """Handles the /start command and sets the user's preferred language."""
+    # Default language is English
+    lang = 'en'
+
+    if context.args:
+        lang = context.args[0].lower()
+        context.user_data['language'] = lang
+        await update.message.reply_text(f"Language set to {lang}. Send me a video link and I'll generate a recipe for you.")
+    else:
+        context.user_data['language'] = lang
+        await update.message.reply_text("Hi! Send me a video link and I'll generate a recipe for you. You can set a language with /start <language_code>, for example, /start es.")
+
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles messages that are not commands."""
@@ -74,9 +101,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     video_path = None
     try:
+        # Get user's preferred language, default to 'en'
+        language = context.user_data.get('language', 'en')
+
         video_path = download_video(url)
-        summary = summarize_video(video_path)
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=summary)
+        summary = summarize_video(video_path, language=language)
+        try:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=summary, parse_mode=ParseMode.MARKDOWN_V2)
+        except Exception as e:
+            # If Markdown parsing fails, send as plain text
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=summary)
+
     except Exception as e:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=f"An error occurred: {e}")
     finally:

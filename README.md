@@ -7,6 +7,8 @@ A Telegram bot that downloads videos from social media and uses AI to generate a
 *   Downloads videos from YouTube, TikTok, and other social media sites.
 *   Analyzes the video content (both audio and visual) using Google's Gemini Pro model.
 *   Generates a well-formatted recipe summary from the video.
+*   Supports multiple languages for the recipe output.
+*   Formats the recipe summary using Markdown for better readability.
 
 ## Prerequisites
 
@@ -69,5 +71,6 @@ You can deploy this bot using Docker.
 ## Usage
 
 1.  Start a chat with your bot on Telegram.
-2.  Send it a link to a video from YouTube, TikTok, or any other supported site.
-3.  The bot will process the video and send you a recipe summary.
+2.  (Optional) Set your preferred language by sending the command `/start <language_code>`. For example, `/start es` for Spanish. If you don't set a language, it will default to English.
+3.  Send it a link to a video from YouTube, TikTok, or any other supported site.
+4.  The bot will process the video and send you a recipe summary, formatted for readability.
