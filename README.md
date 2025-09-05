@@ -8,6 +8,7 @@ A Telegram bot that downloads videos from social media and uses AI to generate a
 *   Analyzes the video content (both audio and visual) using Google's Gemini Pro model.
 *   Generates a well-formatted recipe summary from the video.
 *   Supports multiple languages for the recipe output.
+*   Remembers your language preference between restarts.
 *   Formats the recipe summary using Markdown for better readability.
 
 ## Prerequisites

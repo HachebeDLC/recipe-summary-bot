@@ -1,10 +1,11 @@
 import os
 import yt_dlp
 import time
+import json
 import re
 from telegram import Update
 from telegram.constants import ParseMode
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, PicklePersistence
 from dotenv import load_dotenv
 import google.generativeai as genai
 
@@ -31,35 +32,49 @@ def download_video(url):
 
     return video_path
 
-def sanitize_markdown(text):
-    """
-    Sanitizes the text from Gemini to be compliant with Telegram's MarkdownV2.
-    This version is more selective to avoid breaking intentional formatting.
-    """
-    # Replace common bullet points with dashes
-    text = text.replace('•', '-')
+def escape_markdown_v2(text):
+    """Escapes strings for Telegram's MarkdownV2."""
+    escape_chars = r'_*[]()~`>#+-=|{}.!'
+    return re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
 
-    # Escape specific characters that are often unescaped by the LLM
-    # Note: This is not exhaustive and may need refinement.
-    # We are avoiding a blanket escape to preserve formatting like *bold* and _italic_.
-    escape_chars = r'.!'
-    text = re.sub(f'([{re.escape(escape_chars)}])', r'\\\1', text)
+def format_recipe_markdown(recipe_data):
+    """Formats the recipe data from a dictionary into a MarkdownV2 string."""
+    markdown_parts = []
 
-    # Remove trailing backslash if it exists, as it can cause errors
-    if text.endswith('\\'):
-        text = text[:-1]
+    title = escape_markdown_v2(recipe_data.get("title", "Untitled Recipe"))
+    markdown_parts.append(f"*{title}*")
 
-    return text
+    description = escape_markdown_v2(recipe_data.get("description", ""))
+    if description:
+        markdown_parts.append(f"_{description}_")
+
+    prep_time = escape_markdown_v2(recipe_data.get("prep_time", "N/A"))
+    cook_time = escape_markdown_v2(recipe_data.get("cook_time", "N/A"))
+    servings = escape_markdown_v2(recipe_data.get("servings", "N/A"))
+    markdown_parts.append(f"*Prep Time:* {prep_time}\n*Cook Time:* {cook_time}\n*Servings:* {servings}")
+
+    ingredients = recipe_data.get("ingredients", [])
+    if ingredients:
+        markdown_parts.append("*Ingredients:*")
+        ingredient_list = [f"\\- {escape_markdown_v2(item)}" for item in ingredients]
+        markdown_parts.append("\n".join(ingredient_list))
+
+    instructions = recipe_data.get("instructions", [])
+    if instructions:
+        markdown_parts.append("*Instructions:*")
+        instruction_list = [f"{i+1}\\. {escape_markdown_v2(item)}" for i, item in enumerate(instructions)]
+        markdown_parts.append("\n".join(instruction_list))
+
+    return "\n\n".join(markdown_parts)
 
 def summarize_video(video_path, language='en'):
     """
-    Summarizes the given video into a recipe using the Gemini API.
+    Sends a video to the Gemini API and asks for a recipe in JSON format.
+    Returns a dictionary parsed from the JSON response.
     """
-    # Upload the video file to the Files API
     print(f"Uploading file: {video_path}")
     video_file = genai.upload_file(path=video_path)
 
-    # Wait for the file to be active
     while video_file.state.name == "PROCESSING":
         print("Waiting for file to be processed...")
         time.sleep(10)
@@ -70,36 +85,28 @@ def summarize_video(video_path, language='en'):
 
     print(f"File {video_file.name} is now active.")
 
-    # Call the Gemini API to summarize the video
     model = genai.GenerativeModel("gemini-2.5-pro")
     prompt = f"""
     Analyze the video provided and generate a detailed recipe.
     The user's preferred language is {language}. All output must be in this language.
 
-    The output should be a well-formatted recipe using Telegram's MarkdownV2 formatting.
-    It must include the following sections:
+    Your response MUST be a single JSON object. Do not include any text outside of the JSON object.
+    The JSON object should have the following keys: "title", "description", "prep_time", "cook_time", "servings", "ingredients" (an array of strings), and "instructions" (an array of strings).
 
-    *A short, engaging description of the dish.*
-
-    *Prep Time:* Estimated preparation time.
-    *Cook Time:* Estimated cooking time.
-    *Servings:* How many people the recipe serves.
-
-    *Ingredients:*
-    - A bulleted list of ingredients. Use the `-` character for bullet points.
-
-    *Instructions:*
-    1. A numbered list of clear, step-by-step instructions.
-
-    Take into account all audio and visual information in the video to make the recipe as accurate as possible.
-    If the video does not contain a recipe, please respond with only the message "I'm sorry, I couldn't find a recipe in this video." in the requested language.
+    If the video does not contain a recipe, return a JSON object with a single key "error" with the value "No recipe found".
     """
-    response = model.generate_content([prompt, video_file])
 
-    # Clean up the uploaded file
+    response = model.generate_content([prompt, video_file])
     genai.delete_file(video_file.name)
 
-    return response.text
+    # Clean up the response and parse the JSON
+    clean_response = response.text.strip().replace("```json", "").replace("```", "")
+    try:
+        recipe_data = json.loads(clean_response)
+        return recipe_data
+    except json.JSONDecodeError:
+        # Handle cases where the response is not valid JSON
+        raise ValueError("Failed to parse recipe data from the AI's response.")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /start command and sets the user's preferred language."""
@@ -126,14 +133,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         language = context.user_data.get('language', 'en')
 
         video_path = download_video(url)
-        raw_summary = summarize_video(video_path, language=language)
-        summary = sanitize_markdown(raw_summary)
+        recipe_data = summarize_video(video_path, language=language)
 
-        try:
+        if "error" in recipe_data:
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=recipe_data["error"])
+        else:
+            summary = format_recipe_markdown(recipe_data)
             await context.bot.send_message(chat_id=update.effective_chat.id, text=summary, parse_mode=ParseMode.MARKDOWN_V2)
-        except Exception as e:
-            # If Markdown parsing fails, send as plain text
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=raw_summary)
 
     except Exception as e:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=f"An error occurred: {e}")
@@ -154,7 +160,10 @@ def main():
         print("Please set your Gemini API key in the .env file.")
         return
 
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    # Create a persistence object
+    persistence = PicklePersistence(filepath="bot_data")
+
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).persistence(persistence).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
