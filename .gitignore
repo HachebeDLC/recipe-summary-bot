@@ -137,3 +137,16 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Downloaded media files
+*.mp4
+*.mp3
+
+# IDE files
+.idea/
+
+# Bot persistence file
+bot_data
+
+# Local MongoDB data
+mongo-data/
