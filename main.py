@@ -3,6 +3,7 @@ import yt_dlp
 import time
 import json
 import re
+import asyncio
 from datetime import datetime
 import pymongo
 from telegram import Update
@@ -132,6 +133,33 @@ def summarize_video(video_path, language='en'):
         # Handle cases where the response is not valid JSON
         raise ValueError("Failed to parse recipe data from the AI's response.")
 
+MAX_MESSAGE_LENGTH = 4096
+
+async def send_long_message(bot, chat_id, text, parse_mode=None):
+    """Splits a long message into multiple parts and sends them."""
+    if len(text) <= MAX_MESSAGE_LENGTH:
+        await bot.send_message(chat_id=chat_id, text=text, parse_mode=parse_mode)
+        return
+
+    parts = []
+    current_part = ""
+    for line in text.split('\n'):
+        if len(current_part) + len(line) + 1 > MAX_MESSAGE_LENGTH:
+            parts.append(current_part)
+            current_part = line
+        else:
+            if current_part:
+                current_part += "\n" + line
+            else:
+                current_part = line
+
+    if current_part:
+        parts.append(current_part)
+
+    for part in parts:
+        await bot.send_message(chat_id=chat_id, text=part, parse_mode=parse_mode)
+        await asyncio.sleep(1) # Small delay to ensure messages arrive in order
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /start command and sets the user's preferred language."""
     # Default language is English
@@ -158,7 +186,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if cached_recipe:
         await context.bot.send_message(chat_id=update.effective_chat.id, text="Found this recipe in the cache! Here you go:")
         summary = format_recipe_markdown(cached_recipe['recipe_data'])
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=summary, parse_mode=ParseMode.MARKDOWN_V2)
+        await send_long_message(context.bot, update.effective_chat.id, summary, parse_mode=ParseMode.MARKDOWN_V2)
         return
 
     await context.bot.send_message(chat_id=update.effective_chat.id, text="Processing your video... This may take a moment.")
@@ -174,7 +202,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             # Cache the new recipe
             cache_recipe(url, language, recipe_data)
             summary = format_recipe_markdown(recipe_data)
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=summary, parse_mode=ParseMode.MARKDOWN_V2)
+            await send_long_message(context.bot, update.effective_chat.id, summary, parse_mode=ParseMode.MARKDOWN_V2)
 
     except Exception as e:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=f"An error occurred: {e}")
