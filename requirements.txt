@@ -1,0 +1,6 @@
+python-telegram-bot
+yt-dlp
+moviepy
+google-generativeai
+assemblyai
+python-dotenv
