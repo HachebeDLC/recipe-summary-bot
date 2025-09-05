@@ -145,8 +145,5 @@ vite.config.ts.timestamp-*
 # IDE files
 .idea/
 
-# Bot persistence file
-bot_data
-
 # Local MongoDB data
 mongo-data/

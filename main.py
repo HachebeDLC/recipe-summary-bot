@@ -8,7 +8,7 @@ from datetime import datetime
 import pymongo
 from telegram import Update
 from telegram.constants import ParseMode
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, PicklePersistence
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
 import google.generativeai as genai
 
@@ -25,6 +25,47 @@ MONGO_URI = os.getenv("MONGO_URI")
 mongo_client = pymongo.MongoClient(MONGO_URI)
 db = mongo_client.recipe_bot
 recipes_collection = db.recipes
+user_preferences_collection = db.user_preferences
+
+# Internationalization (i18n) strings
+MESSAGES = {
+    'en': {
+        'welcome': "Hi! Send me a video link and I'll generate a recipe for you. Your current language is English. You can set a new one with /start <language_code> (e.g., /start es).",
+        'lang_set': "Language set to {language}. Send me a video link and I'll generate a recipe for you.",
+        'processing': "Processing your video... This may take a moment.",
+        'from_cache': "Found this recipe in the cache! Here you go:",
+        'error': "An error occurred: {error}",
+        'no_recipe': "I'm sorry, I couldn't find a recipe in this video."
+    },
+    'es': {
+        'welcome': "¡Hola! Envíame un enlace de video y te generaré una receta. Tu idioma actual es Español. Puedes configurar uno nuevo con /start <código_de_idioma> (ej. /start en).",
+        'lang_set': "Idioma configurado a {language}. Envíame un enlace de video y te generaré una receta.",
+        'processing': "Procesando tu video... Esto puede tardar un momento.",
+        'from_cache': "¡Encontré esta receta en el caché! Aquí tienes:",
+        'error': "Ocurrió un error: {error}",
+        'no_recipe': "Lo siento, no pude encontrar una receta en este video."
+    }
+}
+
+def get_message(language, key, **kwargs):
+    """Gets a localized message string."""
+    # Fallback to English if the language or key doesn't exist
+    lang_messages = MESSAGES.get(language, MESSAGES['en'])
+    message = lang_messages.get(key, MESSAGES['en'].get(key, "Message key not found."))
+    return message.format(**kwargs)
+
+def get_user_language(user_id):
+    """Gets the user's language from MongoDB, defaulting to 'en'."""
+    user_pref = user_preferences_collection.find_one({"user_id": user_id})
+    return user_pref.get("language", "en") if user_pref else "en"
+
+def set_user_language(user_id, language):
+    """Sets the user's language in MongoDB."""
+    user_preferences_collection.update_one(
+        {"user_id": user_id},
+        {"$set": {"language": language}},
+        upsert=True
+    )
 
 def get_cached_recipe(url, language):
     """Checks the MongoDB cache for a recipe."""
@@ -162,34 +203,37 @@ async def send_long_message(bot, chat_id, text, parse_mode=None):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles the /start command and sets the user's preferred language."""
-    # Default language is English
-    lang = 'en'
+    user_id = update.effective_user.id
+    lang = get_user_language(user_id) # Get current language first
 
     if context.args:
-        lang = context.args[0].lower()
-        context.user_data['language'] = lang
-        await update.message.reply_text(f"Language set to {lang}. Send me a video link and I'll generate a recipe for you.")
+        new_lang = context.args[0].lower()
+        if new_lang in MESSAGES:
+            set_user_language(user_id, new_lang)
+            # Use the new language for the confirmation message
+            await update.message.reply_text(get_message(new_lang, 'lang_set', language=new_lang))
+        else:
+            await update.message.reply_text(f"Sorry, '{new_lang}' is not a supported language code.")
     else:
-        context.user_data['language'] = lang
-        await update.message.reply_text("Hi! Send me a video link and I'll generate a recipe for you. You can set a language with /start <language_code>, for example, /start es.")
+        # If no args, just send the welcome message in the user's current language
+        await update.message.reply_text(get_message(lang, 'welcome'))
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles messages that are not commands."""
     url = update.message.text
-
-    # Get user's preferred language, default to 'en'
-    language = context.user_data.get('language', 'en')
+    user_id = update.effective_user.id
+    language = get_user_language(user_id)
 
     # Check cache first
     cached_recipe = get_cached_recipe(url, language)
     if cached_recipe:
-        await context.bot.send_message(chat_id=update.effective_chat.id, text="Found this recipe in the cache! Here you go:")
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=get_message(language, 'from_cache'))
         summary = format_recipe_markdown(cached_recipe['recipe_data'])
         await send_long_message(context.bot, update.effective_chat.id, summary, parse_mode=ParseMode.MARKDOWN_V2)
         return
 
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="Processing your video... This may take a moment.")
+    await context.bot.send_message(chat_id=update.effective_chat.id, text=get_message(language, 'processing'))
 
     video_path = None
     try:
@@ -197,7 +241,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         recipe_data = summarize_video(video_path, language=language)
 
         if "error" in recipe_data:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=recipe_data["error"])
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=get_message(language, 'no_recipe'))
         else:
             # Cache the new recipe
             cache_recipe(url, language, recipe_data)
@@ -205,7 +249,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await send_long_message(context.bot, update.effective_chat.id, summary, parse_mode=ParseMode.MARKDOWN_V2)
 
     except Exception as e:
-        await context.bot.send_message(chat_id=update.effective_chat.id, text=f"An error occurred: {e}")
+        await context.bot.send_message(chat_id=update.effective_chat.id, text=get_message(language, 'error', error=e))
     finally:
         # Clean up the video file
         if video_path and os.path.exists(video_path):
@@ -223,10 +267,7 @@ def main():
         print("Please set your Gemini API key in the .env file.")
         return
 
-    # Create a persistence object
-    persistence = PicklePersistence(filepath="bot_data")
-
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).persistence(persistence).build()
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
