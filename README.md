@@ -1,13 +1,12 @@
 # Recipe Bot
 
-A Telegram bot that downloads videos from social media, transcribes the audio, and uses AI to generate a recipe summary.
+A Telegram bot that downloads videos from social media and uses AI to generate a recipe summary directly from the video content.
 
 ## Features
 
 *   Downloads videos from YouTube, TikTok, and other social media sites.
-*   Extracts the audio from the video.
-*   Transcribes the audio using Google's Gemini Pro model.
-*   Summarizes the recipe using Google's Gemini Pro model.
+*   Analyzes the video content (both audio and visual) using Google's Gemini Pro model.
+*   Generates a well-formatted recipe summary from the video.
 
 ## Prerequisites
 

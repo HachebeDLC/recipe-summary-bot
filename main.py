@@ -1,6 +1,5 @@
 import os
 import yt_dlp
-from moviepy.editor import *
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
@@ -14,10 +13,9 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Configure the Gemini client
 genai.configure(api_key=GEMINI_API_KEY)
 
-def download_and_extract_audio(url):
+def download_video(url):
     """
-    Downloads a video from the given URL, extracts the audio,
-    and returns the path to the audio file.
+    Downloads a video from the given URL and returns the path to the video file.
     """
     ydl_opts = {
         'format': 'best',
@@ -28,66 +26,50 @@ def download_and_extract_audio(url):
         info_dict = ydl.extract_info(url, download=True)
         video_path = ydl.prepare_filename(info_dict)
 
-    video = VideoFileClip(video_path)
-    audio_path = os.path.splitext(video_path)[0] + '.mp3'
-    video.audio.write_audiofile(audio_path)
+    return video_path
 
-    os.remove(video_path)
-
-    return audio_path
-
-def transcribe_audio(audio_file_path):
+def summarize_video(video_path):
     """
-    Transcribes the given audio file using the Gemini API.
+    Summarizes the given video into a recipe using the Gemini API.
     """
-    # Upload the audio file to the Files API
-    audio_file = genai.upload_file(path=audio_file_path)
+    # Upload the video file to the Files API
+    video_file = genai.upload_file(path=video_path)
 
-    # Call the Gemini API to transcribe the audio
+    # Call the Gemini API to summarize the video
     model = genai.GenerativeModel("gemini-1.5-pro-preview-0409")
-    response = model.generate_content(["Transcribe this audio clip", audio_file])
+    prompt = """
+    Analyze the video and generate a recipe.
+    The output should be a well-formatted recipe with a title, a list of ingredients, and step-by-step instructions.
+    Take into account both the audio and visual information in the video.
+    If the video does not contain a recipe, please indicate that.
+    """
+    response = model.generate_content([prompt, video_file])
 
     # Clean up the uploaded file
-    genai.delete_file(audio_file.name)
+    genai.delete_file(video_file.name)
 
-    return response.text
-
-def summarize_text(text):
-    """
-    Summarizes the given text into a recipe using Gemini.
-    """
-    model = genai.GenerativeModel("gemini-1.5-pro-preview-0409")
-    prompt = f"""
-    Please analyze the following text and extract a recipe from it.
-    The output should be a well-formatted recipe with a title, a list of ingredients, and step-by-step instructions.
-    If the text does not contain a recipe, please indicate that.
-
-    Text:
-    {text}
-    """
-    response = model.generate_content(prompt)
     return response.text
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sends a welcome message when the /start command is issued."""
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="Hi! Send me a video link and I'll summarize the recipe for you.")
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="Hi! Send me a video link and I'll generate a recipe for you.")
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handles messages that are not commands."""
     url = update.message.text
-    await context.bot.send_message(chat_id=update.effective_chat.id, text="Processing your video...")
+    await context.bot.send_message(chat_id=update.effective_chat.id, text="Processing your video... This may take a moment.")
 
+    video_path = None
     try:
-        audio_file_path = download_and_extract_audio(url)
-        transcript = transcribe_audio(audio_file_path)
-        summary = summarize_text(transcript)
+        video_path = download_video(url)
+        summary = summarize_video(video_path)
         await context.bot.send_message(chat_id=update.effective_chat.id, text=summary)
     except Exception as e:
         await context.bot.send_message(chat_id=update.effective_chat.id, text=f"An error occurred: {e}")
     finally:
-        # Clean up the audio file
-        if 'audio_file_path' in locals() and os.path.exists(audio_file_path):
-            os.remove(audio_file_path)
+        # Clean up the video file
+        if video_path and os.path.exists(video_path):
+            os.remove(video_path)
 
 
 def main():

@@ -1,5 +1,4 @@
 python-telegram-bot
 yt-dlp
-moviepy==1.0.3
 google-generativeai
 python-dotenv
