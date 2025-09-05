@@ -36,17 +36,19 @@ Before you can run this bot, you will need the following:
     cp .env.example .env
     ```
 
-    Then, edit the `.env` file and add your API keys. It should look like this:
+    Then, edit the `.env` file to set your secrets. It should look like this:
 
     ```
     TELEGRAM_BOT_TOKEN="YOUR_TELEGRAM_BOT_TOKEN"
     GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
-    MONGO_URI="mongodb://mongo:27017/"
+    MONGO_USER="user"
+    MONGO_PASS="password"
+    MONGO_URI="mongodb://${MONGO_USER}:${MONGO_PASS}@mongo:27017/"
     ```
 
-    *   **Telegram Bot Token:** Talk to the [BotFather](https://t.me/botfather) on Telegram to create a new bot and get the token.
-    *   **Gemini API Key:** Go to [Google AI Studio](https://aistudio.google.com/) and create a new API key.
-    *   The `MONGO_URI` is already set up for the local Docker environment and does not need to be changed.
+    *   Set your `TELEGRAM_BOT_TOKEN` and `GEMINI_API_KEY`.
+    *   You can change the default `MONGO_USER` and `MONGO_PASS` to something more secure.
+    *   The `MONGO_URI` is automatically constructed from the user and pass, and should not need to be changed.
 
 ## Deployment
 
