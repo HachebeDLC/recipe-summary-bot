@@ -36,7 +36,7 @@ def summarize_video(video_path):
     video_file = genai.upload_file(path=video_path)
 
     # Call the Gemini API to summarize the video
-    model = genai.GenerativeModel("gemini-1.5-pro-preview-0409")
+    model = genai.GenerativeModel("gemini-2.5-pro")
     prompt = """
     Analyze the video and generate a recipe.
     The output should be a well-formatted recipe with a title, a list of ingredients, and step-by-step instructions.
