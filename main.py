@@ -1,5 +1,6 @@
 import os
 import yt_dlp
+import time
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from dotenv import load_dotenv
@@ -33,7 +34,19 @@ def summarize_video(video_path):
     Summarizes the given video into a recipe using the Gemini API.
     """
     # Upload the video file to the Files API
+    print(f"Uploading file: {video_path}")
     video_file = genai.upload_file(path=video_path)
+
+    # Wait for the file to be active
+    while video_file.state.name == "PROCESSING":
+        print("Waiting for file to be processed...")
+        time.sleep(10)
+        video_file = genai.get_file(name=video_file.name)
+
+    if video_file.state.name != "ACTIVE":
+        raise ValueError(f"File {video_file.name} failed to process. Final state: {video_file.state.name}")
+
+    print(f"File {video_file.name} is now active.")
 
     # Call the Gemini API to summarize the video
     model = genai.GenerativeModel("gemini-2.5-pro")
