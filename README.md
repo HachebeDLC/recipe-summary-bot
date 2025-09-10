@@ -74,3 +74,35 @@ The easiest way to run the bot is with Docker Compose. This will start the bot a
 2.  (Optional) Set your preferred language by sending the command `/start <language_code>`. For example, `/start es` for Spanish. If you don't set a language, it will default to English.
 3.  Send it a link to a video from YouTube, TikTok, or any other supported site.
 4.  The bot will process the video and send you a recipe summary, formatted for readability.
+
+---
+
+## CI/CD Deployment with GitHub Actions and Tailscale
+
+This project includes a GitHub Actions workflow to automatically deploy the bot to an on-premise server every time you push to the `main` branch.
+
+### On-Premise Server Setup
+
+Your server needs the following software installed:
+*   Docker
+*   Docker Compose
+*   Git
+*   Tailscale
+*   An SSH server (like OpenSSH)
+
+You must also:
+1.  Install Tailscale on the server and ensure it's connected to your Tailnet.
+2.  Clone this repository to a directory on the server (e.g., `~/recipe-bot`). The deployment script assumes this location.
+3.  Generate an SSH key pair on your local machine (not the server): `ssh-keygen -t ed25519 -C "your_email@example.com"`.
+4.  Copy the contents of the public key (e.g., `~/.ssh/id_ed25519.pub`) and add it to the `~/.ssh/authorized_keys` file on your on-premise server.
+
+### GitHub Secrets Configuration
+
+For the GitHub Actions workflow to run, you must configure the following secrets in your GitHub repository's settings (`Settings > Secrets and variables > Actions`):
+
+*   **`TAILSCALE_AUTHKEY`**: A Tailscale auth key. It is highly recommended to use an ephemeral, pre-authorized, and tagged key for security. Generate one in your Tailscale Admin Console under `Settings > Keys`.
+*   **`SSH_HOST`**: The Tailscale IP address or magic DNS name of your on-premise server.
+*   **`SSH_USER`**: The username you will use to SSH into your on-premise server.
+*   **`SSH_PRIVATE_KEY`**: The contents of the private SSH key you generated earlier (e.g., the content of the `~/.ssh/id_ed25519` file).
+
+Once these steps are completed, any push to the `main` branch will automatically trigger the deployment workflow.
